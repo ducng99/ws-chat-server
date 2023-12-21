@@ -77,7 +77,7 @@ func (c *Client) readPump() {
 			continue
 		}
 
-		handleChatMessage(c, chatMessage)
+		handleClientMessage(c, chatMessage)
 	}
 }
 

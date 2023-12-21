@@ -10,6 +10,23 @@ type ClientMessage struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
+type ServerMessage struct {
+	Type      string `json:"type"`
+	Data      string `json:"data"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+type ServerMessageType string
+
+const (
+	serverMessage         ServerMessageType = "serverMessage"
+	clientSwitchedChannel ServerMessageType = "clientSwitchedChannel"
+)
+
+type ServerMessageRoot struct {
+	Messages []ServerMessage `json:"messages"`
+}
+
 func parseMessage(message []byte) (*ClientMessage, error) {
 	var p fastjson.Parser
 	v, err := p.Parse(string(message))
@@ -41,6 +58,8 @@ func handleClientMessage(c *Client, clientMessage *ClientMessage) {
 		// You can add your logic here
 		break
 	default:
-		log.Printf("Unknown message type: %v", clientMessage.Type)
+		message := "Unknown message type: " + clientMessage.Type
+		c.send <- []byte(message)
+		break
 	}
 }
