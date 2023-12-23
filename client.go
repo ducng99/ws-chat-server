@@ -1,16 +1,13 @@
-// Copyright 2013 The Gorilla WebSocket Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package main
 
 import (
-	"bytes"
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"ws-chat-server/server_message"
 )
 
 const (
@@ -27,25 +24,29 @@ const (
 	maxMessageSize = 512
 )
 
-var (
-	newline = []byte{'\n'}
-	space   = []byte{' '}
-)
-
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
+	ReadBufferSize:  maxMessageSize * 2,
+	WriteBufferSize: maxMessageSize * 2,
+	CheckOrigin:     checkWSOrigin,
+}
+
+func checkWSOrigin(r *http.Request) bool {
+	return r.Header.Get("Origin") == "http://localhost:5173" || r.Header.Get("Origin") == "https://static.ducng.dev"
 }
 
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
-	hub *Hub
+	// Username
+	username string
+
+	// Current chatting channel
+	channel *Channel
 
 	// The websocket connection.
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
-	send chan []byte
+	send chan server_message.ServerMessageInterface
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -55,7 +56,7 @@ type Client struct {
 // reads from this goroutine.
 func (c *Client) readPump() {
 	defer func() {
-		c.hub.unregister <- c
+		c.channel.unregister <- c
 		c.conn.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
@@ -69,9 +70,8 @@ func (c *Client) readPump() {
 			}
 			break
 		}
-		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 
-		chatMessage, err := parseMessage(message)
+		chatMessage, err := parseClientMessage(message)
 		if err != nil {
 			log.Printf("Failed to parse message: %v", err)
 			continue
@@ -106,13 +106,23 @@ func (c *Client) writePump() {
 			if err != nil {
 				return
 			}
-			w.Write(message)
+
+			serverMessages := server_message.CreateMessages([]server_message.ServerMessageInterface{message})
 
 			// Add queued chat messages to the current websocket message.
 			n := len(c.send)
 			for i := 0; i < n; i++ {
-				w.Write(newline)
-				w.Write(<-c.send)
+				message, ok := <-c.send
+				if ok {
+					serverMessages.Messages = append(serverMessages.Messages, message)
+				}
+			}
+
+			data, err := json.Marshal(serverMessages)
+			if err != nil {
+				log.Printf("Failed to encode message: %v", err)
+			} else {
+				w.Write(data)
 			}
 
 			if err := w.Close(); err != nil {
@@ -128,14 +138,26 @@ func (c *Client) writePump() {
 }
 
 // serveWs handles websocket requests from the peer.
-func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+func serveWs(username string, channel *Channel, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
-	client.hub.register <- client
+	client := &Client{
+		username: username,
+		channel:  channel,
+		conn:     conn,
+		send:     make(chan server_message.ServerMessageInterface),
+	}
+	client.channel.register <- client
+
+	ChatServer.addUser(client.username, client)
+
+	conn.SetCloseHandler(func(code int, text string) error {
+		ChatServer.removeUser(client.username)
+		return nil
+	})
 
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.

@@ -1,53 +1,74 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
-	"sync"
+	"strings"
 	"time"
 )
 
 var addr = flag.String("addr", ":8080", "http service address")
 
-type Server struct {
-	hubs  map[string]*Hub
-	mutex sync.RWMutex
-}
-
-func newServer() *Server {
-	return &Server{
-		hubs: make(map[string]*Hub),
+// Handle simple authentication with username in query string
+func handleAuthentication(w http.ResponseWriter, r *http.Request) {
+	// Checks CORS
+	if r.Header.Get("Origin") != "http://localhost:5173" && r.Header.Get("Origin") != "https://static.ducng.dev" {
+		http.Error(w, "Invalid origin", http.StatusBadRequest)
+		return
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
+		w.Header().Set("Access-Control-Allow-Methods", "GET")
 	}
+
+	username := r.URL.Query().Get("username")
+
+	if strings.ToLower(username) == "anonymous" {
+		username = CreateAnonymousUsername()
+	} else if err := IsUsernameValid(username); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	token, err := CreateToken(username)
+	if err != nil {
+		http.Error(w, "Failed to create token", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"username": username,
+		"token":    token,
+	}
+	responseJSON, err := json.Marshal(response)
+
+	if err != nil {
+		http.Error(w, "Failed to create response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(responseJSON)
 }
 
-func (s *Server) getHub(name string) *Hub {
-	s.mutex.RLock()
-	hub, ok := s.hubs[name]
-	s.mutex.RUnlock()
+func handleWebsocket(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
 
+	username, ok := GetUsernameFromToken(token)
 	if !ok {
-		s.mutex.Lock()
-		hub = newHub()
-		s.hubs[name] = hub
-		s.mutex.Unlock()
+		http.Error(w, "Invalid token", http.StatusBadRequest)
+		return
 	}
 
-	return hub
-}
-
-func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	channelName := r.URL.Query().Get("channel")
-	hub := s.getHub(channelName)
-
-	serveWs(hub, w, r)
+	ChatServer.handleWebSocket(username, w, r)
 }
 
 func main() {
 	flag.Parse()
-	chatServer := newServer()
 
-	http.HandleFunc("/", chatServer.handleWebSocket)
+	http.HandleFunc("/login", handleAuthentication)
+	http.HandleFunc("/ws", handleWebsocket)
 
 	httpServer := &http.Server{
 		Addr:              *addr,

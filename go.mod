@@ -1,4 +1,4 @@
-module github.com/ducng99/ws-chat-server
+module ws-chat-server
 
 go 1.21.5
 

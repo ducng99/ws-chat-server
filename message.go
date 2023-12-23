@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/valyala/fastjson"
+	"ws-chat-server/server_message"
 )
 
 type ClientMessage struct {
@@ -10,24 +11,7 @@ type ClientMessage struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
-type ServerMessage struct {
-	Type      string `json:"type"`
-	Data      string `json:"data"`
-	Timestamp int64  `json:"timestamp"`
-}
-
-type ServerMessageType string
-
-const (
-	serverMessage         ServerMessageType = "serverMessage"
-	clientSwitchedChannel ServerMessageType = "clientSwitchedChannel"
-)
-
-type ServerMessageRoot struct {
-	Messages []ServerMessage `json:"messages"`
-}
-
-func parseMessage(message []byte) (*ClientMessage, error) {
+func parseClientMessage(message []byte) (*ClientMessage, error) {
 	var p fastjson.Parser
 	v, err := p.Parse(string(message))
 	if err != nil {
@@ -59,7 +43,9 @@ func handleClientMessage(c *Client, clientMessage *ClientMessage) {
 		break
 	default:
 		message := "Unknown message type: " + clientMessage.Type
-		c.send <- []byte(message)
+		serverMessage := server_message.CreateServerMessage(message)
+
+		c.send <- serverMessage
 		break
 	}
 }
