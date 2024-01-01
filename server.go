@@ -25,12 +25,16 @@ func newServer() *Server {
 
 // getChannel returns a channel with the given name.
 // If the channel does not exist, it creates a new one.
-func (s *Server) getChannel(name string) *Channel {
+func (s *Server) getChannel(name string) (*Channel, error) {
 	s.channelsMutex.RLock()
 	channel, ok := s.channels[name]
 	s.channelsMutex.RUnlock()
 
 	if !ok {
+		if err := IsChannelNameValid(name); err != nil {
+			return nil, err
+		}
+
 		s.channelsMutex.Lock()
 		channel = NewChannel(name)
 		s.channels[name] = channel
@@ -39,7 +43,7 @@ func (s *Server) getChannel(name string) *Channel {
 		go channel.run()
 	}
 
-	return channel
+	return channel, nil
 }
 
 func (s *Server) addUser(username string, client *Client) {
@@ -63,7 +67,11 @@ func (s *Server) hasUser(username string) bool {
 }
 
 func (s *Server) handleWebSocket(username string, w http.ResponseWriter, r *http.Request) {
-	channel := s.getChannel("welcome")
+	channel, err := s.getChannel("welcome")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	serveWs(username, channel, w, r)
 }

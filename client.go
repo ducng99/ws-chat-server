@@ -155,6 +155,7 @@ func serveWs(username string, channel *Channel, w http.ResponseWriter, r *http.R
 	ChatServer.addUser(client.username, client)
 
 	conn.SetCloseHandler(func(code int, text string) error {
+		close(client.send)
 		ChatServer.removeUser(client.username)
 		return nil
 	})

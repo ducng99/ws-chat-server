@@ -23,33 +23,34 @@ type ServerMessages struct {
 
 type baseServerMessageStruct struct {
 	Type      ServerMessageType `json:"type"`
-	Message   string            `json:"message"`
 	Timestamp int64             `json:"timestamp"`
 }
 
-type serverMessageServerMessage struct {
+type msg_ServerMessage struct {
 	baseServerMessageStruct
+	Message string `json:"message"`
 }
 
-func (s serverMessageServerMessage) getType() ServerMessageType {
+func (s msg_ServerMessage) getType() ServerMessageType {
 	return s.Type
 }
 
-type serverMessageSwitchedChannel struct {
+type msg_SwitchedChannel struct {
 	baseServerMessageStruct
 	Channel string `json:"channel"`
 }
 
-func (s serverMessageSwitchedChannel) getType() ServerMessageType {
+func (s msg_SwitchedChannel) getType() ServerMessageType {
 	return s.Type
 }
 
-type serverMessageUserMessage struct {
+type msg_UserMessage struct {
 	baseServerMessageStruct
-	Sender string `json:"sender"`
+	Sender  string `json:"sender"`
+	Message string `json:"message"`
 }
 
-func (s serverMessageUserMessage) getType() ServerMessageType {
+func (s msg_UserMessage) getType() ServerMessageType {
 	return s.Type
 }
 
@@ -61,23 +62,22 @@ func CreateMessages(messages []ServerMessageInterface) ServerMessages {
 	return _serverMessages
 }
 
-func CreateServerMessage(message string) *serverMessageServerMessage {
-	_serverMessage := &serverMessageServerMessage{
+func CreateServerMessage(message string) *msg_ServerMessage {
+	_serverMessage := &msg_ServerMessage{
 		baseServerMessageStruct: baseServerMessageStruct{
 			Type:      serverMessage,
-			Message:   message,
 			Timestamp: time.Now().UnixMilli(),
 		},
+		Message: message,
 	}
 
 	return _serverMessage
 }
 
-func CreateSwitchedChannelMessage(channel string) *serverMessageSwitchedChannel {
-	_serverMessage := &serverMessageSwitchedChannel{
+func CreateSwitchedChannelMessage(channel string) *msg_SwitchedChannel {
+	_serverMessage := &msg_SwitchedChannel{
 		baseServerMessageStruct: baseServerMessageStruct{
 			Type:      clientSwitchedChannel,
-			Message:   "Switched to channel #" + channel,
 			Timestamp: time.Now().UnixMilli(),
 		},
 		Channel: channel,
@@ -86,14 +86,14 @@ func CreateSwitchedChannelMessage(channel string) *serverMessageSwitchedChannel 
 	return _serverMessage
 }
 
-func CreateUserMessage(sender string, message string) *serverMessageUserMessage {
-	_serverMessage := &serverMessageUserMessage{
+func CreateUserMessage(sender string, message string) *msg_UserMessage {
+	_serverMessage := &msg_UserMessage{
 		baseServerMessageStruct: baseServerMessageStruct{
 			Type:      userMessage,
-			Message:   message,
 			Timestamp: time.Now().UnixMilli(),
 		},
-		Sender: sender,
+		Sender:  sender,
+		Message: message,
 	}
 
 	return _serverMessage

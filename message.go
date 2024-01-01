@@ -30,12 +30,21 @@ func parseClientMessage(message []byte) (*ClientMessage, error) {
 func handleClientMessage(c *Client, clientMessage *ClientMessage) {
 	switch clientMessage.Type {
 	case "sendMessage":
-		// Handle sendMessage type
-		// You can add your logic here
+		message := server_message.CreateUserMessage(c.username, clientMessage.Data)
+		c.channel.broadcast <- message
 		break
 	case "switchChannel":
-		// Handle switchChannel type
-		// You can add your logic here
+		channel, err := ChatServer.getChannel(clientMessage.Data)
+
+		if err != nil {
+			message := err.Error()
+			serverMessage := server_message.CreateServerMessage(message)
+			c.send <- serverMessage
+		} else {
+			c.channel.unregister <- c
+			c.channel = channel
+			channel.register <- c
+		}
 		break
 	case "ping":
 		// Handle ping type

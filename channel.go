@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"ws-chat-server/server_message"
 )
 
@@ -23,12 +24,26 @@ type Channel struct {
 
 func NewChannel(name string) *Channel {
 	return &Channel{
-		name: name,
+		name:       name,
 		broadcast:  make(chan server_message.ServerMessageInterface),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		clients:    make(map[*Client]bool),
 	}
+}
+
+func IsChannelNameValid(name string) error {
+	if len(name) < 1 || len(name) > 20 {
+		return errors.New("Channel name must be between 1 and 20 characters")
+	}
+
+	for _, char := range name {
+		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '_' || char == '-') {
+			return errors.New("Channel name can only contain alphanumeric characters, underscores and dashes")
+		}
+	}
+
+	return nil
 }
 
 func (h *Channel) run() {
@@ -42,7 +57,6 @@ func (h *Channel) run() {
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send)
 			}
 		case message := <-h.broadcast:
 			for client := range h.clients {
