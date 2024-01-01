@@ -6,9 +6,8 @@ import (
 )
 
 type ClientMessage struct {
-	Type      string `json:"type"`
-	Data      string `json:"data"`
-	Timestamp int64  `json:"timestamp"`
+	Type string `json:"type"`
+	Data string `json:"data"`
 }
 
 func parseClientMessage(message []byte) (*ClientMessage, error) {
@@ -19,9 +18,8 @@ func parseClientMessage(message []byte) (*ClientMessage, error) {
 	}
 
 	clientMessage := &ClientMessage{
-		Type:      string(v.GetStringBytes("type")),
-		Data:      string(v.GetStringBytes("data")),
-		Timestamp: v.GetInt64("timestamp"),
+		Type: string(v.GetStringBytes("type")),
+		Data: string(v.GetStringBytes("data")),
 	}
 
 	return clientMessage, nil
