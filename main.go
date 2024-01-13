@@ -42,7 +42,6 @@ func handleAuthentication(w http.ResponseWriter, r *http.Request) {
 		"token":    token,
 	}
 	responseJSON, err := json.Marshal(response)
-
 	if err != nil {
 		http.Error(w, "Failed to create response", http.StatusInternalServerError)
 		return

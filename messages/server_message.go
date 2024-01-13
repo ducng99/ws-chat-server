@@ -1,4 +1,4 @@
-package server_message
+package messages
 
 import (
 	"time"

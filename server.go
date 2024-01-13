@@ -46,6 +46,12 @@ func (s *Server) getChannel(name string) (*Channel, error) {
 	return channel, nil
 }
 
+func (s *Server) removeChannel(name string) {
+	s.channelsMutex.Lock()
+	delete(s.channels, name)
+	s.channelsMutex.Unlock()
+}
+
 func (s *Server) addUser(username string, client *Client) {
 	s.usersMutex.Lock()
 	s.users[username] = client

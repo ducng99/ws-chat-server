@@ -1,13 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"time"
+	"ws-chat-server/messages"
 
 	"github.com/gorilla/websocket"
-	"ws-chat-server/server_message"
 )
 
 const (
@@ -46,7 +45,7 @@ type Client struct {
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
-	send chan server_message.ServerMessageInterface
+	send chan messages.ServerMessageInterface
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -63,18 +62,13 @@ func (c *Client) readPump() {
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
-		_, message, err := c.conn.ReadMessage()
-		if err != nil {
+		chatMessage := &messages.ClientMessage{}
+
+		if err := c.conn.ReadJSON(chatMessage); err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
 			}
 			break
-		}
-
-		chatMessage, err := parseClientMessage(message)
-		if err != nil {
-			log.Printf("Failed to parse message: %v", err)
-			continue
 		}
 
 		handleClientMessage(c, chatMessage)
@@ -102,12 +96,7 @@ func (c *Client) writePump() {
 				return
 			}
 
-			w, err := c.conn.NextWriter(websocket.TextMessage)
-			if err != nil {
-				return
-			}
-
-			serverMessages := server_message.CreateMessages([]server_message.ServerMessageInterface{message})
+			serverMessages := messages.CreateMessages([]messages.ServerMessageInterface{message})
 
 			// Add queued chat messages to the current websocket message.
 			n := len(c.send)
@@ -118,14 +107,7 @@ func (c *Client) writePump() {
 				}
 			}
 
-			data, err := json.Marshal(serverMessages)
-			if err != nil {
-				log.Printf("Failed to encode message: %v", err)
-			} else {
-				w.Write(data)
-			}
-
-			if err := w.Close(); err != nil {
+			if err := c.conn.WriteJSON(serverMessages); err != nil {
 				return
 			}
 		case <-ticker.C:
@@ -134,6 +116,42 @@ func (c *Client) writePump() {
 				return
 			}
 		}
+	}
+}
+
+func (c *Client) switchChannel(channel *Channel) {
+	c.channel.unregister <- c
+	c.channel = channel
+	c.channel.register <- c
+}
+
+func handleClientMessage(c *Client, clientMessage *messages.ClientMessage) {
+	switch clientMessage.Type {
+	case "sendMessage":
+		message := messages.CreateUserMessage(c.username, clientMessage.Data)
+		c.channel.broadcast <- message
+		break
+	case "switchChannel":
+		channel, err := ChatServer.getChannel(clientMessage.Data)
+
+		if err != nil {
+			message := err.Error()
+			serverMessage := messages.CreateServerMessage(message)
+			c.send <- serverMessage
+		} else {
+			c.switchChannel(channel)
+		}
+		break
+	case "ping":
+		// Handle ping type
+		// You can add your logic here
+		break
+	default:
+		message := "Unknown message type: " + clientMessage.Type
+		serverMessage := messages.CreateServerMessage(message)
+
+		c.send <- serverMessage
+		break
 	}
 }
 
@@ -148,7 +166,7 @@ func serveWs(username string, channel *Channel, w http.ResponseWriter, r *http.R
 		username: username,
 		channel:  channel,
 		conn:     conn,
-		send:     make(chan server_message.ServerMessageInterface),
+		send:     make(chan messages.ServerMessageInterface),
 	}
 	client.channel.register <- client
 
