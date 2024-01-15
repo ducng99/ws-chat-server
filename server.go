@@ -6,7 +6,10 @@ import (
 	"sync"
 )
 
-var ChatServer = newServer()
+var ChatServer = &Server{
+	channels: make(map[string]*Channel),
+	users:    make(map[string]*Client),
+}
 
 type Server struct {
 	channels      map[string]*Channel
@@ -16,14 +19,7 @@ type Server struct {
 	usersMutex sync.RWMutex
 }
 
-func newServer() *Server {
-	return &Server{
-		channels: make(map[string]*Channel),
-		users:    make(map[string]*Client),
-	}
-}
-
-// getChannel returns a channel with the given name.
+// getChannel returns a multi channel with the given name.
 // If the channel does not exist, it creates a new one.
 func (s *Server) getChannel(name string) (*Channel, error) {
 	s.channelsMutex.RLock()
@@ -36,11 +32,9 @@ func (s *Server) getChannel(name string) (*Channel, error) {
 		}
 
 		s.channelsMutex.Lock()
-		channel = NewChannel(name)
+		channel = NewMultiChannel(name)
 		s.channels[name] = channel
 		s.channelsMutex.Unlock()
-
-		go channel.run()
 	}
 
 	return channel, nil
@@ -64,12 +58,12 @@ func (s *Server) removeUser(username string) {
 	s.usersMutex.Unlock()
 }
 
-func (s *Server) hasUser(username string) bool {
+func (s *Server) getUser(username string) (*Client, bool) {
 	s.usersMutex.RLock()
-	_, ok := s.users[strings.ToLower(username)]
+	user, ok := s.users[strings.ToLower(username)]
 	s.usersMutex.RUnlock()
 
-	return ok
+	return user, ok
 }
 
 func (s *Server) handleWebSocket(username string, w http.ResponseWriter, r *http.Request) {

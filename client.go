@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 	"ws-chat-server/messages"
 
@@ -46,6 +48,35 @@ type Client struct {
 
 	// Buffered channel of outbound messages.
 	send chan messages.ServerMessageInterface
+
+	// Direct channels, keys are usernames and values are channels
+	directChannelsLock sync.RWMutex
+	directChannels     map[string]*Channel
+}
+
+func (c *Client) getDirectChannel(username string) (*Channel, error) {
+	c.directChannelsLock.RLock()
+	channel, ok := c.directChannels[username]
+	c.directChannelsLock.RUnlock()
+
+	if !ok {
+		targetClient, ok := ChatServer.getUser(username)
+		if !ok {
+			return nil, errors.New("User not found")
+		}
+
+		channel = NewDirectChannel(c, targetClient)
+
+		c.directChannelsLock.Lock()
+		c.directChannels[username] = channel
+		c.directChannelsLock.Unlock()
+
+		targetClient.directChannelsLock.Lock()
+		targetClient.directChannels[c.username] = channel
+		targetClient.directChannelsLock.Unlock()
+	}
+
+	return channel, nil
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -71,7 +102,7 @@ func (c *Client) readPump() {
 			break
 		}
 
-		handleClientMessage(c, chatMessage)
+		c.handleClientMessage(chatMessage)
 	}
 }
 
@@ -125,33 +156,41 @@ func (c *Client) switchChannel(channel *Channel) {
 	c.channel.register <- c
 }
 
-func handleClientMessage(c *Client, clientMessage *messages.ClientMessage) {
+func (c *Client) handleClientMessage(clientMessage *messages.ClientMessage) {
 	switch clientMessage.Type {
 	case "sendMessage":
 		message := messages.CreateUserMessage(c.username, clientMessage.Data)
 		c.channel.broadcast <- message
-		break
-	case "switchChannel":
+	case "switchMultiChannel":
 		channel, err := ChatServer.getChannel(clientMessage.Data)
 
 		if err != nil {
+			log.Println(err)
 			message := err.Error()
 			serverMessage := messages.CreateServerMessage(message)
 			c.send <- serverMessage
 		} else {
 			c.switchChannel(channel)
 		}
-		break
+	case "switchDirectChannel":
+		channel, err := c.getDirectChannel(clientMessage.Data)
+
+		if err != nil {
+			log.Println(err)
+			message := err.Error()
+			serverMessage := messages.CreateServerMessage(message)
+			c.send <- serverMessage
+		} else {
+			c.switchChannel(channel)
+		}
 	case "ping":
 		// Handle ping type
 		// You can add your logic here
-		break
 	default:
 		message := "Unknown message type: " + clientMessage.Type
 		serverMessage := messages.CreateServerMessage(message)
 
 		c.send <- serverMessage
-		break
 	}
 }
 
@@ -163,10 +202,11 @@ func serveWs(username string, channel *Channel, w http.ResponseWriter, r *http.R
 		return
 	}
 	client := &Client{
-		username: username,
-		channel:  channel,
-		conn:     conn,
-		send:     make(chan messages.ServerMessageInterface),
+		username:       username,
+		channel:        channel,
+		conn:           conn,
+		send:           make(chan messages.ServerMessageInterface),
+		directChannels: map[string]*Channel{},
 	}
 	client.channel.register <- client
 
@@ -174,6 +214,11 @@ func serveWs(username string, channel *Channel, w http.ResponseWriter, r *http.R
 
 	conn.SetCloseHandler(func(code int, text string) error {
 		close(client.send)
+
+		for _, channel := range client.directChannels {
+			channel.Close()
+		}
+
 		ChatServer.removeUser(client.username)
 		return nil
 	})

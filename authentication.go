@@ -39,7 +39,7 @@ func IsUsernameValid(username string) error {
 		return errors.New("Username is not allowed")
 	}
 
-	if ChatServer.hasUser(username) {
+	if _, ok := ChatServer.getUser(username); ok {
 		return errors.New("Username is already in use")
 	}
 
@@ -57,7 +57,7 @@ func CreateAnonymousUsername() string {
 		username := fmt.Sprintf("Anonymous#%0*d", digits, number)
 
 		// Check if the username is valid and not already in use
-		if !ChatServer.hasUser(username) {
+		if _, ok := ChatServer.getUser(username); !ok {
 			return username
 		}
 
