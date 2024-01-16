@@ -5,7 +5,7 @@ import (
 	"ws-chat-server/messages"
 )
 
-type ChannelType int
+type ChannelType int8
 
 const (
 	CHANNEL_TYPE_MULTI ChannelType = iota

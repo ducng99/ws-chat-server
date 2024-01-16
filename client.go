@@ -159,7 +159,7 @@ func (c *Client) switchChannel(channel *Channel) {
 func (c *Client) handleClientMessage(clientMessage *messages.ClientMessage) {
 	switch clientMessage.Type {
 	case "sendMessage":
-		message := messages.CreateUserMessage(c.username, clientMessage.Data)
+		message := messages.CreateUserMessage(c.username, clientMessage.Data, int8(c.channel.channelType), c.channel.GetName(c))
 		c.channel.broadcast <- message
 	case "switchMultiChannel":
 		channel, err := ChatServer.getChannel(clientMessage.Data)

@@ -46,8 +46,10 @@ func (s msg_SwitchedChannel) getType() ServerMessageType {
 
 type msg_UserMessage struct {
 	baseServerMessageStruct
-	Sender  string `json:"sender"`
-	Message string `json:"message"`
+	Sender      string `json:"sender"`
+	Message     string `json:"message"`
+	ChannelType int8   `json:"channelType"`
+	ChannelName string `json:"channelName"`
 }
 
 func (s msg_UserMessage) getType() ServerMessageType {
@@ -86,14 +88,16 @@ func CreateSwitchedChannelMessage(channel string) *msg_SwitchedChannel {
 	return _serverMessage
 }
 
-func CreateUserMessage(sender string, message string) *msg_UserMessage {
+func CreateUserMessage(senderName string, message string, channelType int8, channelName string) *msg_UserMessage {
 	_serverMessage := &msg_UserMessage{
 		baseServerMessageStruct: baseServerMessageStruct{
 			Type:      userMessage,
 			Timestamp: time.Now().UnixMilli(),
 		},
-		Sender:  sender,
-		Message: message,
+		Sender:      senderName,
+		Message:     message,
+		ChannelType: channelType,
+		ChannelName: channelName,
 	}
 
 	return _serverMessage
