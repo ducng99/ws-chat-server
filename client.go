@@ -48,6 +48,7 @@ type Client struct {
 
 	// Buffered channel of outbound messages.
 	send chan messages.ServerMessageInterface
+	sendLock sync.Mutex
 
 	// Direct channels, keys are usernames and values are channels
 	directChannelsLock sync.RWMutex
@@ -233,7 +234,9 @@ func serveWs(username string, channel *Channel, w http.ResponseWriter, r *http.R
 			client.channel.unregister <- client
 		}
 
+		client.sendLock.Lock()
 		close(client.send)
+		client.sendLock.Unlock()
 
 		for _, channel := range client.directChannels {
 			channel.Close()

@@ -122,14 +122,25 @@ func (c *Channel) run() {
 			c.clients[client] = true
 
 			message := messages.CreateSwitchedChannelMessage(c.GetName(client))
+
+			client.sendLock.Lock()
 			client.send <- message
+			client.sendLock.Unlock()
+
+			systemMessage := messages.CreateServerMessage("@" + client.username + " just joined.")
+			c.broadcast <- systemMessage
 		case client := <-c.unregister:
 			if _, ok := c.clients[client]; ok {
 				delete(c.clients, client)
+
+				systemMessage := messages.CreateServerMessage("@" + client.username + " has left.")
+				c.broadcast <- systemMessage
 			}
 		case message := <-c.broadcast:
 			for client := range c.clients {
+				client.sendLock.Lock()
 				client.send <- message
+				client.sendLock.Unlock()
 			}
 		}
 	}
