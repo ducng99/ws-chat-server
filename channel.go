@@ -8,7 +8,10 @@ import (
 type ChannelType int8
 
 const (
+	// Many-to-many channel
 	CHANNEL_TYPE_MULTI ChannelType = iota
+
+	// One-to-one channel
 	CHANNEL_TYPE_DIRECT
 )
 
@@ -33,7 +36,7 @@ type Channel struct {
 	// Unregister requests from clients.
 	unregister chan *Client
 
-	// Additional direct channel data (1 to 1)
+	// Additional direct channel data
 	ChannelDirect
 }
 
@@ -113,7 +116,7 @@ func IsChannelNameValid(name string) error {
 }
 
 func (c *Channel) run() {
-	for {
+	for c != nil {
 		select {
 		case client := <-c.register:
 			c.clients[client] = true
@@ -126,12 +129,7 @@ func (c *Channel) run() {
 			}
 		case message := <-c.broadcast:
 			for client := range c.clients {
-				select {
-				case client.send <- message:
-				default:
-					client.conn.Close()
-					delete(c.clients, client)
-				}
+				client.send <- message
 			}
 		}
 	}

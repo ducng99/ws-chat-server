@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -62,7 +62,7 @@ func (c *Client) getDirectChannel(username string) (*Channel, error) {
 	if !ok {
 		targetClient, ok := ChatServer.getUser(username)
 		if !ok {
-			return nil, errors.New("User not found")
+			return nil, fmt.Errorf("User %s does not exist", username)
 		}
 
 		channel = NewDirectChannel(c, targetClient)
@@ -86,13 +86,12 @@ func (c *Client) getDirectChannel(username string) (*Channel, error) {
 // reads from this goroutine.
 func (c *Client) readPump() {
 	defer func() {
-		c.channel.unregister <- c
 		c.conn.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error { c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
-	for {
+	for c != nil {
 		chatMessage := &messages.ClientMessage{}
 
 		if err := c.conn.ReadJSON(chatMessage); err != nil {
@@ -117,7 +116,7 @@ func (c *Client) writePump() {
 		ticker.Stop()
 		c.conn.Close()
 	}()
-	for {
+	for c != nil {
 		select {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
@@ -156,11 +155,18 @@ func (c *Client) switchChannel(channel *Channel) {
 	c.channel.register <- c
 }
 
+// Sends a message to the current channel
+func (c *Client) sendMessage(message string) {
+	if message != "" {
+		messageObj := messages.CreateUserMessage(c.username, message, int8(c.channel.channelType), c.channel.GetName(c))
+		c.channel.broadcast <- messageObj
+	}
+}
+
 func (c *Client) handleClientMessage(clientMessage *messages.ClientMessage) {
 	switch clientMessage.Type {
 	case "sendMessage":
-		message := messages.CreateUserMessage(c.username, clientMessage.Data, int8(c.channel.channelType), c.channel.GetName(c))
-		c.channel.broadcast <- message
+		c.sendMessage(clientMessage.Data)
 	case "switchMultiChannel":
 		channel, err := ChatServer.getChannel(clientMessage.Data)
 
@@ -171,6 +177,11 @@ func (c *Client) handleClientMessage(clientMessage *messages.ClientMessage) {
 			c.send <- serverMessage
 		} else {
 			c.switchChannel(channel)
+
+			message, ok := clientMessage.AdditionalData["message"].(string)
+			if ok {
+				c.sendMessage(message)
+			}
 		}
 	case "switchDirectChannel":
 		channel, err := c.getDirectChannel(clientMessage.Data)
@@ -182,6 +193,11 @@ func (c *Client) handleClientMessage(clientMessage *messages.ClientMessage) {
 			c.send <- serverMessage
 		} else {
 			c.switchChannel(channel)
+
+			message, ok := clientMessage.AdditionalData["message"].(string)
+			if ok {
+				c.sendMessage(message)
+			}
 		}
 	case "ping":
 		// Handle ping type
@@ -213,6 +229,10 @@ func serveWs(username string, channel *Channel, w http.ResponseWriter, r *http.R
 	ChatServer.addUser(client.username, client)
 
 	conn.SetCloseHandler(func(code int, text string) error {
+		if client.channel != nil {
+			client.channel.unregister <- client
+		}
+
 		close(client.send)
 
 		for _, channel := range client.directChannels {
