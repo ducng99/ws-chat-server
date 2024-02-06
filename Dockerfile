@@ -10,7 +10,7 @@ RUN go mod download
 # Build app
 RUN --mount=target=. \
   --mount=type=cache,target=/root/.cache/go-build \
-  go build -v -tags "linux" -o /server
+  go build -v -o /server
 
 # Runner
 FROM alpine:latest
